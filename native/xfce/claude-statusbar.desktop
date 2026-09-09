@@ -1,0 +1,9 @@
+[Xfce Panel]
+Type=X-XFCE-PanelPlugin
+Encoding=UTF-8
+Name=Claude Status Bar
+Comment=Claude Code usage: 5-hour and weekly limits with time to reset
+Icon=claude-statusbar
+X-XFCE-Module=claude-statusbar
+X-XFCE-Internal=false
+X-XFCE-API=2.0

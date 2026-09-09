@@ -1,0 +1,44 @@
+[project]
+name = "claude-statusbar"
+version = "2.0.0"
+description = "Cross-platform Claude Code usage meter: tray icon on Windows, macOS, KDE, GNOME, and a native Xfce panel plugin."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "GPL-3.0-or-later" }
+authors = [{ name = "mkalmousli" }]
+keywords = ["claude", "usage", "rate-limit", "tray", "xfce", "panel", "kde", "gnome"]
+classifiers = [
+    "Environment :: X11 Applications :: Qt",
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: MacOS :: MacOS X",
+    "Programming Language :: Python :: 3",
+    "Topic :: Desktop Environment",
+]
+
+dependencies = [
+    "PySide6-Essentials>=6.6",   # tray icon, windows, SVG rendering
+    "platformdirs>=3.0",        # per-OS config and cache locations
+]
+
+[project.scripts]
+claude-statusbar = "claude_statusbar.cli:entry"
+
+[project.gui-scripts]
+# Same program without a console window on Windows.
+claude-statusbar-tray = "claude_statusbar.cli:entry"
+
+[project.urls]
+Homepage = "https://github.com/mkalmousli/ClaudeStatusBar"
+Issues = "https://github.com/mkalmousli/ClaudeStatusBar/issues"
+
+[build-system]
+requires = ["uv_build>=0.11,<0.12"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-root = "src"
+module-name = "claude_statusbar"
+# The logo ships with the package; it is the window and desktop icon.
+source-include = ["logo.svg", "src/claude_statusbar/assets/*.svg"]

@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <title>claude-statusbar</title>
+  <!-- A panel item in miniature: the rounded plate, a spark for Claude,
+       and the two meters the tool exists to show. -->
+  <rect x="2" y="2" width="60" height="60" rx="14" fill="#2f2f33"/>
+  <rect x="2.75" y="2.75" width="58.5" height="58.5" rx="13.25"
+        fill="none" stroke="#4d4d4d" stroke-width="1.5"/>
+  <!-- six-point asterisk: three strokes crossing at (32, 20) -->
+  <g stroke="#d97757" stroke-width="4.2" stroke-linecap="round">
+    <path d="M32 12v16"/>
+    <path d="M25.1 16l13.8 8"/>
+    <path d="M25.1 24l13.8-8"/>
+  </g>
+  <rect x="13" y="36" width="38" height="7" rx="3.5" fill="#4d4d4d"/>
+  <rect x="13" y="36" width="26" height="7" rx="3.5" fill="#0ca30c"/>
+  <rect x="13" y="47" width="38" height="7" rx="3.5" fill="#4d4d4d"/>
+  <rect x="13" y="47" width="14" height="7" rx="3.5" fill="#fab219"/>
+</svg>
