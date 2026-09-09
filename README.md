@@ -9,7 +9,7 @@ glance, without opening anything.
 <br clear="left">
 
 <p align="center">
-  <img src="screenshots/xfce4-plugin.png" alt="The panel item on an Xfce panel" width="640">
+  <img src="screenshots/xfce4-plugin.png" alt="The panel item on an Xfce panel" width="560">
   <br>
   <sub>The panel item: two meters, the percentage used, and the countdown to each reset.</sub>
 </p>
