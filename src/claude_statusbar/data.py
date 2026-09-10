@@ -182,6 +182,11 @@ class Data:
         self.h5_cd = countdown(self.h5_reset)
         self.wk_cd = countdown(self.wk_reset)
 
+        self.wk_burn_5h = self._wk_burn_5h()
+        self.wk_sessions_left = (
+            self.wk_rem / self.wk_burn_5h
+            if self.wk_burn_5h and self.wk_rem is not None else None)
+
         self.fresh = self.have_state and self.age < config.seconds("stale")
         self.live = self._session_live()
         self.note, self.note_warn = self._age_note()
@@ -221,6 +226,38 @@ class Data:
         if window:
             usable = [r for r in usable if int(r.get(reset_key) or 0) == window]
         return max(usable, key=lambda r: (float(r[used_key]), int(r.get("ts") or 0)))
+
+    #: Look-back for the "how fast is the weekly limit burning" estimate — one
+    #: 5-hour session — and the least elapsed time that makes the slope worth
+    #: trusting (below this a few noisy minutes would dominate).
+    BURN_WINDOW = 5 * 3600
+    BURN_MIN_ELAPSED = 15 * 60
+
+    def _wk_burn_5h(self):
+        """Weekly limit a single 5h session burns, from the recent snapshots.
+
+        Walks the weekly-meter readings in the current weekly window over the
+        last five hours and scales the rise up to a full 5h session, so the
+        overview can mark how many more sessions fit in what is left.
+        """
+        if self.wk_use is None or not self.wk_reset:
+            return None
+        points = sorted(
+            (int(r["ts"]), clamp_pct(r.get("wk_used")))
+            for r in self.records
+            if r.get("wk_used") is not None and int(r.get("ts") or 0)
+            and int(r.get("wk_reset") or 0) == self.wk_reset
+        )
+        if len(points) < 2:
+            return None
+        recent = [p for p in points if p[0] >= self.now - self.BURN_WINDOW] or points
+        base_ts, base_use = recent[0]
+        last_ts, last_use = points[-1]
+        elapsed = last_ts - base_ts
+        rise = last_use - base_use
+        if elapsed < self.BURN_MIN_ELAPSED or rise <= 0:
+            return None
+        return min(100.0, rise * self.BURN_WINDOW / elapsed)
 
     # -- liveness ---------------------------------------------------------
     def _logs(self):

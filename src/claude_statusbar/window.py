@@ -52,11 +52,18 @@ class Meter(QWidget):
         self.used = None
         self.thickness = thickness
         self.colour = None            # None = colour by the usage bands
+        self.marks = []               # percentages to notch across the bar
+        self.highlight = None          # one mark drawn bolder (session-end)
         self.setMinimumHeight(thickness + 2)
         self.setMaximumHeight(thickness + 2)
 
     def set_used(self, used):
         self.used = used
+        self.update()
+
+    def set_marks(self, marks, highlight=None):
+        self.marks = list(marks or [])
+        self.highlight = highlight
         self.update()
 
     def paintEvent(self, _event):
@@ -76,6 +83,29 @@ class Meter(QWidget):
             filled.addRoundedRect(0, top, width, height, radius, radius)
             painter.fillPath(filled,
                              QColor(self.colour or status_color(self.used)))
+
+        # Notches showing where each further 5h session would land, with the
+        # current session's end drawn bolder.  Clipped to the rounded track so
+        # they never poke past the ends.
+        if self.marks or self.highlight is not None:
+            painter.setClipPath(path)
+            on_track = QColor(cfg["img_label"])
+            on_fill = self.palette().color(QPalette.Window)
+            strong = self.palette().color(QPalette.WindowText)
+            filled_end = max(height, self.width() * (self.used or 0) / 100)
+
+            def notch(mark, weight, bold=False):
+                x = self.width() * mark / 100
+                colour = strong if bold else (
+                    on_fill if x <= filled_end else on_track)
+                painter.fillRect(int(round(x)) - weight // 2, int(top),
+                                 weight, int(height), colour)
+
+            for mark in self.marks:
+                if 0 < mark < 100:
+                    notch(mark, 2)
+            if self.highlight is not None and 0 < self.highlight < 100:
+                notch(self.highlight, 3, bold=True)
         painter.end()
 
 
@@ -85,7 +115,8 @@ class LimitCard(QWidget):
     def __init__(self):
         super().__init__()
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 6, 0, 6)
+        layout.setContentsMargins(0, 4, 0, 4)
+        layout.setSpacing(3)
 
         top = QHBoxLayout()
         self.name = QLabel()
@@ -107,20 +138,48 @@ class LimitCard(QWidget):
         self.time_meter = Meter(5)
         self.time_meter.colour = cfg["img_label"]
         self.caption = QLabel()
+        self.caption.setWordWrap(True)
+        caption_font = QFont(self.caption.font())
+        caption_font.setPointSize(max(1, caption_font.pointSize() - 1))
+        self.caption.setFont(caption_font)
         self.caption.setStyleSheet(muted(self.caption))
+        # A second, dimmer line for the 5h-session projection.
+        self.projection = QLabel()
+        self.projection.setWordWrap(True)
+        self.projection.setFont(caption_font)
+        self.projection.setStyleSheet(muted(self.projection, 0.6))
 
         layout.addLayout(top)
         layout.addWidget(self.meter)
         layout.addWidget(self.time_meter)
         layout.addWidget(self.caption)
+        layout.addWidget(self.projection)
 
-    def update_values(self, label, used, countdown, time_left=None, reset_at=0):
+    def update_values(self, label, used, countdown, time_left=None, reset_at=0,
+                      burn=None, session_left=None):
         self.name.setText(TITLES.get(label, label))
         colour = status_color(used) if used is not None else cfg["img_label"]
         self.figure.setText(
             f'<span style="color:{colour}">{pct(used)}</span>'
             f'<span style="font-size:small; {muted(self.figure)}"> used</span>')
         self.meter.set_used(used)
+
+        # Notch the weekly bar at each 5h-session boundary: the bold notch is
+        # where the session running now ends, the thin ones every session after
+        # it, all at the current burn rate.
+        marks, session_end, sessions_left, full_left = [], None, None, None
+        if burn and used is not None:
+            head = 100 - used
+            sessions_left = head / burn
+            this_burn = burn * (session_left / 100) if session_left else burn
+            session_end = min(100.0, used + this_burn)
+            full_left = max(0.0, (head - this_burn) / burn)
+            mark = session_end + burn
+            while mark < 100 and len(marks) < 60:
+                marks.append(mark)
+                mark += burn
+        self.meter.set_marks(marks, session_end)
+
         self.time_meter.colour = cfg["img_label"]
         self.time_meter.set_used(time_left)
         self.time_meter.setVisible(time_left is not None)
@@ -128,15 +187,26 @@ class LimitCard(QWidget):
         if used is None:
             self.caption.setText("no reading for the current window")
         elif countdown:
+            parts = [f"{pct(100 - used)} left", f"resets {countdown}"]
             at = clock(reset_at)
-            text = f"{pct(100 - used)} left · resets in {countdown}"
             if at:
-                text += f", at {at}"
+                parts.append(at)
             if time_left is not None:
-                text += f" · {pct(time_left)} of the window left"
-            self.caption.setText(text)
+                parts.append(f"{pct(time_left)} window")
+            self.caption.setText(" · ".join(parts))
         else:
             self.caption.setText(f"{pct(100 - used)} left")
+
+        if sessions_left is not None:
+            after = (f", then {full_left:.1f} more full"
+                     if full_left is not None else "")
+            self.projection.setText(
+                f"≈{pct(burn)}/5h session · this session ends near "
+                f"{round(session_end)}%{after} · ~{sessions_left:.1f}× 5h "
+                f"sessions left in the week")
+        else:
+            self.projection.setText("")
+        self.projection.setVisible(bool(self.projection.text()))
 
 
 class ColorField(QWidget):
@@ -856,7 +926,10 @@ class MainWindow(QWidget):
         resets = {"5h": data.h5_reset, "wk": data.wk_reset}
         for card, (label, used, countdown) in zip(self.cards, limit_rows(data)):
             card.update_values(label, used, countdown,
-                               time_left_pct(data, label), resets.get(label, 0))
+                               time_left_pct(data, label), resets.get(label, 0),
+                               burn=data.wk_burn_5h if label == "wk" else None,
+                               session_left=(time_left_pct(data, "5h")
+                                             if label == "wk" else None))
 
         subtitle = f"{data.model or 'Claude'} · reading {claude_dir()}"
         if data.note:
