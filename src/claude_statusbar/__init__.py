@@ -7,7 +7,7 @@ PROJECT_URL = "https://github.com/mkalmousli/ClaudeStatusBar"
 ISSUES_URL = "https://github.com/mkalmousli/ClaudeStatusBar/issues"
 DONATE_URL = "https://github.com/sponsors/mkalmousli"
 AUTHOR_URL = "https://github.com/mkalmousli"
-AUTHOR = "mkalmousli"
+AUTHOR = "Mohamad Almousli"
 LICENSE = "GPL-3.0-or-later"
 SUMMARY = (
     "A usage meter for Claude Code: how much of your 5-hour and weekly limits "

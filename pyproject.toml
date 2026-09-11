@@ -5,7 +5,7 @@ description = "Cross-platform Claude Code usage meter: tray icon on Windows, mac
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "GPL-3.0-or-later" }
-authors = [{ name = "mkalmousli" }]
+authors = [{ name = "Mohamad Almousli" }]
 keywords = ["claude", "usage", "rate-limit", "tray", "xfce", "panel", "kde", "gnome"]
 classifiers = [
     "Environment :: X11 Applications :: Qt",
