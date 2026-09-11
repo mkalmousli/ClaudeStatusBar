@@ -129,6 +129,18 @@ def format_duration(seconds):
     return "".join(parts) or "0s"
 
 
+def bucket_key(day, granularity):
+    """A `date` bucketed by day/week/month/year -> (sort key, short label)."""
+    if granularity == "week":
+        start = day - timedelta(days=day.weekday())
+        return start.isoformat(), start.strftime("%d %b")
+    if granularity == "month":
+        return day.strftime("%Y-%m"), day.strftime("%b %Y")
+    if granularity == "year":
+        return day.strftime("%Y"), day.strftime("%Y")
+    return day.isoformat(), day.strftime("%d %b")
+
+
 def read_json(path, default=None):
     try:
         with open(path) as fh:

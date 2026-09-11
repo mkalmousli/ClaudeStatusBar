@@ -2,16 +2,16 @@
 
 import json
 import time
-from datetime import date
+from datetime import date, datetime
 
-from claude_statusbar import config
+from claude_statusbar import config, history
 from claude_statusbar.config import cfg
 from claude_statusbar.paths import (CACHE_DIR, projects_dir, state_file,
                                     stats_file, statusline_script)
 from pathlib import Path
 
-from claude_statusbar.util import (clamp_pct, countdown, dig, dur, now,
-                                   read_json, today, week_ago)
+from claude_statusbar.util import (bucket_key, clamp_pct, countdown, dig, dur,
+                                   now, read_json, today, week_ago)
 
 
 def account():
@@ -380,6 +380,75 @@ class Data:
             except OSError:
                 continue
         return total
+
+    # -- for the History tab -----------------------------------------------
+    def token_series(self, granularity="day"):
+        """Total tokens per day/week/month/year, oldest first.
+
+        [(sort_key, label, tokens)]. Sourced from Claude Code's own stats
+        cache, which is the only place token counts survive longer than the
+        state file's pruning window.
+        """
+        stats = read_json(stats_file(), {}) or {}
+        buckets = {}
+        for row in stats.get("dailyModelTokens") or []:
+            raw = row.get("date")
+            if not raw:
+                continue
+            try:
+                day = date.fromisoformat(raw)
+            except ValueError:
+                continue
+            key, label = bucket_key(day, granularity)
+            total = sum((row.get("tokensByModel") or {}).values())
+            entry = buckets.setdefault(key, [label, 0])
+            entry[1] += total
+        return [(key, label, tokens)
+               for key, (label, tokens) in sorted(buckets.items())]
+
+    def activity_series(self, granularity="day"):
+        """Messages and sessions per bucket, oldest first.
+
+        [(sort_key, label, messages, sessions)].
+        """
+        stats = read_json(stats_file(), {}) or {}
+        buckets = {}
+        for row in stats.get("dailyActivity") or []:
+            raw = row.get("date")
+            if not raw:
+                continue
+            try:
+                day = date.fromisoformat(raw)
+            except ValueError:
+                continue
+            key, label = bucket_key(day, granularity)
+            entry = buckets.setdefault(key, [label, 0, 0])
+            entry[1] += row.get("messageCount", 0) or 0
+            entry[2] += row.get("sessionCount", 0) or 0
+        return [(key, label, msgs, sessions)
+               for key, (label, msgs, sessions) in sorted(buckets.items())]
+
+    def waste_series(self, kind="h5", granularity="day"):
+        """Unused allowance per bucket, oldest first, from closed windows.
+
+        [(sort_key, label, avg_wasted_pct, windows_counted)]. A window only
+        counts once it has actually closed (its reset has passed and a later
+        snapshot proved it), so the current, still-open window never shows up
+        as "wasted" — it just hasn't finished yet.
+        """
+        buckets = {}
+        for window in history.closed_windows(kind):
+            reset = window.get("reset")
+            if not reset:
+                continue
+            day = datetime.fromtimestamp(int(reset)).date()
+            key, label = bucket_key(day, granularity)
+            wasted = max(0.0, 100.0 - float(window.get("peak") or 0))
+            entry = buckets.setdefault(key, [label, 0.0, 0])
+            entry[1] += wasted
+            entry[2] += 1
+        return [(key, label, total / count, count)
+               for key, (label, total, count) in sorted(buckets.items())]
 
     # -- for the GUI's drill-down ----------------------------------------
     def session_rows(self, with_meta=True):

@@ -8,7 +8,7 @@ can sit in the middle of an existing statusline without disturbing it.
 import json
 import sys
 
-from claude_statusbar import config
+from claude_statusbar import config, history
 from claude_statusbar.locking import exclusive, replace_atomic
 from claude_statusbar.paths import state_file
 from claude_statusbar.util import as_epoch, dig, now, read_json
@@ -86,6 +86,7 @@ def store(payload):
             replace_atomic(tmp, state)
     except OSError:
         pass
+    history.record(snapshot, snapshot["ts"])
     return snapshot
 
 

@@ -6,10 +6,10 @@ from PySide6.QtGui import (QAction, QColor, QDesktopServices, QFont,
                            QGuiApplication, QIcon, QKeySequence, QPainter,
                            QPainterPath, QPalette, QPixmap, QShortcut)
 from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QColorDialog,
-                               QFileDialog, QFrame, QGridLayout, QHBoxLayout,
-                               QHeaderView, QLabel, QLineEdit, QPushButton,
-                               QMenu, QMessageBox, QScrollArea, QSizePolicy,
-                               QSpinBox, QTabWidget,
+                               QComboBox, QFileDialog, QFrame, QGridLayout,
+                               QHBoxLayout, QHeaderView, QLabel, QLineEdit,
+                               QPushButton, QMenu, QMessageBox, QScrollArea,
+                               QSizePolicy, QSpinBox, QTabWidget,
                                QTableWidget, QTableWidgetItem, QVBoxLayout,
                                QWidget)
 
@@ -109,6 +109,111 @@ class Meter(QWidget):
         painter.end()
 
 
+class BarChart(QWidget):
+    """A small, hoverable vertical bar chart, drawn straight with QPainter.
+
+    Kept dependency-free (no plotting library) so the app stays light; the
+    same style of hand-rolled QPainter widget as Meter above.
+    """
+
+    def __init__(self, height=160, unit="", value_fmt=None):
+        super().__init__()
+        self.bars = []                # [(label, value, colour, tooltip)]
+        self.max_value = 1.0
+        self.unit = unit
+        self.value_fmt = value_fmt or (lambda v: f"{v:.0f}{self.unit}")
+        self.setMinimumHeight(height)
+        self.setMouseTracking(True)
+        self._hover = -1
+
+    def set_bars(self, bars, max_value=None):
+        self.bars = bars
+        self.max_value = max_value or max((b[1] for b in bars), default=0) or 1.0
+        self._hover = -1
+        self.update()
+
+    def _bar_rects(self):
+        if not self.bars:
+            return []
+        margin_bottom = 22
+        top = 6
+        usable_h = max(1, self.height() - margin_bottom - top)
+        n = len(self.bars)
+        gap = 3
+        width = max(2.0, (self.width() - gap * (n - 1)) / n)
+        rects = []
+        for index, (_label, value, _colour, _tip) in enumerate(self.bars):
+            x = index * (width + gap)
+            h = usable_h * min(1.0, value / self.max_value) if self.max_value else 0
+            rects.append((x, top + (usable_h - h), width, max(1.0, h)))
+        return rects
+
+    def mouseMoveEvent(self, event):
+        rects = self._bar_rects()
+        pos = event.position() if hasattr(event, "position") else event.pos()
+        hover = -1
+        for index, (x, _y, w, _h) in enumerate(rects):
+            if x <= pos.x() <= x + w:
+                hover = index
+                break
+        if hover != self._hover:
+            self._hover = hover
+            if hover >= 0:
+                label, value, _colour, tip = self.bars[hover]
+                from PySide6.QtWidgets import QToolTip
+                QToolTip.showText(event.globalPosition().toPoint()
+                                  if hasattr(event, "globalPosition")
+                                  else self.mapToGlobal(event.pos()),
+                                  tip or f"{label}: {self.value_fmt(value)}", self)
+            self.update()
+
+    def leaveEvent(self, _event):
+        self._hover = -1
+        self.update()
+
+    def paintEvent(self, _event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        track = QColor(cfg["img_track"])
+        label_colour = QColor(cfg["img_label"])
+
+        if not self.bars:
+            painter.setPen(label_colour)
+            painter.drawText(self.rect(), Qt.AlignCenter, "No data yet")
+            painter.end()
+            return
+
+        baseline = self.height() - 22
+        painter.setPen(track)
+        painter.drawLine(0, baseline, self.width(), baseline)
+
+        rects = self._bar_rects()
+        n = len(self.bars)
+        # Thin out x-axis labels so they never overlap.
+        stride = max(1, n // max(1, self.width() // 56))
+        for index, ((x, y, w, h), (label, _value, colour, _tip)) in enumerate(
+                zip(rects, self.bars)):
+            colour_q = QColor(colour)
+            if index == self._hover:
+                colour_q = colour_q.lighter(125)
+            path = QPainterPath()
+            radius = min(3, w / 2)
+            path.addRoundedRect(x, y, w, h, radius, radius)
+            painter.fillPath(path, colour_q)
+
+            if index % stride == 0 or index == self._hover:
+                painter.save()
+                painter.setPen(label_colour)
+                font = QFont(painter.font())
+                font.setPointSize(max(7, font.pointSize() - 2))
+                painter.setFont(font)
+                painter.translate(x + w / 2, baseline + 4)
+                painter.rotate(45)
+                painter.drawText(0, 0, label)
+                painter.restore()
+        painter.end()
+
+
 class LimitCard(QWidget):
     """One limit: name, big percentage, meter, and when it resets."""
 
@@ -155,8 +260,12 @@ class LimitCard(QWidget):
         layout.addWidget(self.caption)
         layout.addWidget(self.projection)
 
+    #: Nominal length of a 5h session, for turning a span of time into a
+    #: count of sessions that fit inside it.
+    SESSION_SECONDS = 5 * 3600
+
     def update_values(self, label, used, countdown, time_left=None, reset_at=0,
-                      burn=None, session_left=None):
+                      burn=None, session_left=None, h5_reset=0):
         self.name.setText(TITLES.get(label, label))
         colour = status_color(used) if used is not None else cfg["img_label"]
         self.figure.setText(
@@ -167,15 +276,41 @@ class LimitCard(QWidget):
         # Notch the weekly bar at each 5h-session boundary: the bold notch is
         # where the session running now ends, the thin ones every session after
         # it, all at the current burn rate.
-        marks, session_end, sessions_left, full_left = [], None, None, None
+        #
+        # sessions_left counts *full* 5h sessions still possible this week if
+        # usage continues back-to-back with no pause. Two independent limits
+        # apply, and the tighter one wins:
+        #  - the weekly *allowance*: first the current session finishes
+        #    (burning `this_burn`, its share of a session scaled by how much
+        #    of its 5h is still ahead), then whatever allowance remains is
+        #    divided into further full sessions at the current burn rate;
+        #  - the weekly *clock*: no session can start unless a full 5h fits
+        #    before the week itself resets, however much allowance is left.
+        marks, session_end, sessions_left, clock_limited = [], None, None, False
         if burn and used is not None:
             head = 100 - used
-            sessions_left = head / burn
-            this_burn = burn * (session_left / 100) if session_left else burn
+            current_time_left_pct = session_left if session_left is not None else 100.0
+            this_burn = burn * (current_time_left_pct / 100)
             session_end = min(100.0, used + this_burn)
-            full_left = max(0.0, (head - this_burn) / burn)
+            by_allowance = max(0.0, (head - this_burn) / burn)
+            sessions_left = by_allowance
+
+            if h5_reset and reset_at:
+                # Sessions run back-to-back after the current one ends, so
+                # the current session's own tail end (h5_reset) is where the
+                # clock starts counting, not "now".
+                spare_seconds = max(0, reset_at - h5_reset)
+                by_clock = spare_seconds // self.SESSION_SECONDS
+                if by_clock < sessions_left:
+                    sessions_left = float(by_clock)
+                    clock_limited = True
+
+            # One notch per full session actually counted in sessions_left, so
+            # the bar never shows a boundary the text doesn't back up (e.g.
+            # allowance would in principle allow more, but the week resets
+            # first — draw no further than that).
             mark = session_end + burn
-            while mark < 100 and len(marks) < 60:
+            while mark < 100 and len(marks) < int(sessions_left):
                 marks.append(mark)
                 mark += burn
         self.meter.set_marks(marks, session_end)
@@ -198,12 +333,11 @@ class LimitCard(QWidget):
             self.caption.setText(f"{pct(100 - used)} left")
 
         if sessions_left is not None:
-            after = (f", then {full_left:.1f} more full"
-                     if full_left is not None else "")
+            limiter = "the week ends first" if clock_limited else "the allowance runs out first"
             self.projection.setText(
                 f"≈{pct(burn)}/5h session · this session ends near "
-                f"{round(session_end)}%{after} · ~{sessions_left:.1f}× 5h "
-                f"sessions left in the week")
+                f"{round(session_end)}% · {sessions_left:.1f} more full 5h "
+                f"sessions possible before the week resets ({limiter})")
         else:
             self.projection.setText("")
         self.projection.setVisible(bool(self.projection.text()))
@@ -406,9 +540,11 @@ class MainWindow(QWidget):
         self.setWindowIcon(QIcon(str(LOGO)))
         self.resize(780, 620)
 
+        self._last_data = None
         self.tabs = QTabWidget()
         self.tabs.addTab(self._overview_tab(), "Overview")
         self.tabs.addTab(self._sessions_tab(), "Sessions")
+        self.tabs.addTab(self._history_tab(), "History")
         self.tabs.addTab(self._settings_tab(), "Settings")
         self.tabs.addTab(self._about_tab(), "About")
 
@@ -640,6 +776,109 @@ class MainWindow(QWidget):
                     cells.append(item.text() if item else "")
                 lines.append("\t".join(cells).strip())
         self._to_clipboard("\n".join(lines))
+
+    # -- History (usage over time, and what went unused) ------------------
+    GRANULARITIES = [("day", "Day"), ("week", "Week"), ("month", "Month"),
+                     ("year", "Year")]
+    MAX_BARS = 36
+
+    def _history_tab(self):
+        page = QWidget()
+        outer = QVBoxLayout(page)
+        outer.setContentsMargins(18, 18, 18, 18)
+        outer.setSpacing(10)
+
+        top = QHBoxLayout()
+        blurb = QLabel(
+            "Token usage over time, and how much of each rate-limit window "
+            "reset unused — the allowance that simply expired.")
+        blurb.setWordWrap(True)
+        blurb.setStyleSheet(muted(blurb))
+        top.addWidget(blurb, 1)
+        top.addWidget(QLabel("Group by"))
+        self.history_granularity = QComboBox()
+        for key, label in self.GRANULARITIES:
+            self.history_granularity.addItem(label, key)
+        self.history_granularity.setCurrentIndex(1)   # Week is a sane default
+        self.history_granularity.currentIndexChanged.connect(self._fill_history)
+        top.addWidget(self.history_granularity)
+        outer.addLayout(top)
+
+        outer.addWidget(self._section_heading("Token usage"))
+        self.token_chart = BarChart(150, value_fmt=human)
+        self.token_chart.setToolTip("")
+        outer.addWidget(self.token_chart)
+        self.token_summary = QLabel()
+        self.token_summary.setStyleSheet(muted(self.token_summary))
+        outer.addWidget(self.token_summary)
+
+        waste_row = QHBoxLayout()
+        waste_row.addWidget(self._section_heading("Unused allowance per window"))
+        waste_row.addStretch(1)
+        self.waste_kind = QComboBox()
+        self.waste_kind.addItem("5-hour windows", "h5")
+        self.waste_kind.addItem("Weekly windows", "wk")
+        self.waste_kind.currentIndexChanged.connect(self._fill_history)
+        waste_row.addWidget(self.waste_kind)
+        outer.addLayout(waste_row)
+        self.waste_chart = BarChart(150, unit="%")
+        outer.addWidget(self.waste_chart)
+        self.waste_summary = QLabel()
+        self.waste_summary.setWordWrap(True)
+        self.waste_summary.setStyleSheet(muted(self.waste_summary))
+        outer.addWidget(self.waste_summary)
+
+        outer.addStretch(1)
+        return page
+
+    @staticmethod
+    def _section_heading(text):
+        label = QLabel(text)
+        font = QFont(label.font())
+        font.setBold(True)
+        label.setFont(font)
+        return label
+
+    def _fill_history(self, *_args):
+        if self._last_data is None:
+            return
+        granularity = self.history_granularity.currentData()
+        data = self._last_data
+
+        tokens = data.token_series(granularity)[-self.MAX_BARS:]
+        # A single, calmer colour for a token-volume series — the traffic-light
+        # bands mean "danger", which does not apply to raw token counts.
+        accent = QColor(cfg["warn_color"]).darker(115).name()
+        bars = [(label, value, accent, f"{label}: {human(value)} tokens")
+               for _key, label, value in tokens]
+        self.token_chart.set_bars(bars)
+        total = sum(t[2] for t in tokens)
+        self.token_summary.setText(
+            f"{human(total)} tokens across {len(tokens)} {granularity}(s)"
+            if tokens else "No token history yet — check back after a session or two.")
+
+        kind = self.waste_kind.currentData()
+        waste = data.waste_series(kind, granularity)[-self.MAX_BARS:]
+        waste_bars = [(label, pct_value, status_color(pct_value),
+                      f"{label}: {pct_value:.0f}% left unused ({count} window"
+                      f"{'s' if count != 1 else ''})")
+                     for _key, label, pct_value, count in waste]
+        self.waste_chart.set_bars(waste_bars, max_value=100)
+
+        if waste:
+            windows = sum(count for *_r, count in waste)
+            weighted = sum(p * c for *_r, p, c in waste) / windows if windows else 0
+            fully_wasted = sum(1 for *_r, p, c in waste if p >= 95)
+            noun = "5h session" if kind == "h5" else "weekly"
+            self.waste_summary.setText(
+                f"{windows} {noun} window(s) closed in this range · on average "
+                f"{weighted:.0f}% of each was never used"
+                + (f" · {fully_wasted} window(s) barely touched (≤5% used)"
+                   if fully_wasted else ""))
+        else:
+            self.waste_summary.setText(
+                "No windows have closed yet — this fills in once a 5h or "
+                "weekly limit actually resets while the app is capturing.")
 
     # -- Settings ---------------------------------------------------------
     def _settings_tab(self):
@@ -922,14 +1161,15 @@ class MainWindow(QWidget):
         if self.timer.interval() != wanted:
             self.timer.setInterval(wanted)
 
-        data = Data()
+        data = self._last_data = Data()
         resets = {"5h": data.h5_reset, "wk": data.wk_reset}
         for card, (label, used, countdown) in zip(self.cards, limit_rows(data)):
             card.update_values(label, used, countdown,
                                time_left_pct(data, label), resets.get(label, 0),
                                burn=data.wk_burn_5h if label == "wk" else None,
                                session_left=(time_left_pct(data, "5h")
-                                             if label == "wk" else None))
+                                             if label == "wk" else None),
+                               h5_reset=data.h5_reset if label == "wk" else 0)
 
         subtitle = f"{data.model or 'Claude'} · reading {claude_dir()}"
         if data.note:
@@ -964,6 +1204,7 @@ class MainWindow(QWidget):
         self._set_grid(self.account_grid, info)
 
         self._fill_sessions(data)
+        self._fill_history()
 
 
 def run():

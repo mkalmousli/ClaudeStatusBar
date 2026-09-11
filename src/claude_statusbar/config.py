@@ -37,6 +37,11 @@ SETTINGS = [
             "Panel", 8, 128),
     Setting("icon", "\u2733", "text", "Icon",
             "Leading glyph for the tooltip. Empty hides it.", "Panel"),
+    Setting("show_tray", True, "bool", "Show the tray icon",
+            "Turn off if you use the Xfce panel plugin and don't want a "
+            "second icon in the system tray. Takes effect immediately; the "
+            "Xfce plugin and \"Details and settings\" keep working either "
+            "way.", "Panel"),
 
     # ---- Colours --------------------------------------------------------
     Setting("bands", [[0, "#0ca30c"], [50, "#fab219"],

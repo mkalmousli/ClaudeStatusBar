@@ -120,6 +120,8 @@ class Tray(QSystemTrayIcon):
         if self.timer.interval() != wanted:
             self.timer.setInterval(wanted)
 
+        self.setVisible(cfg["show_tray"])
+
         data = Data()
         self.setIcon(svg_icon(square_svg(data)))
         text = tooltip(data)
@@ -159,7 +161,6 @@ def run():
 
     tray = Tray(app)
     guard.listen(tray.open_window)
-    tray.show()
     if not cfg["start_minimised"]:
         tray.open_window()
     return app.exec()
