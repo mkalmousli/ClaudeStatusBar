@@ -8,6 +8,15 @@ PY   := $(VENV)/bin/python
 
 install:
 	@command -v uv >/dev/null || { echo "ERROR: uv not found -> https://docs.astral.sh/uv/"; exit 1; }
+	@# A running tray or window process already has the old code imported;
+	@# reinstalling underneath it would silently do nothing until the next
+	@# login. Stop it so the freshly installed code is what comes back.
+	@# The $$ anchors match only the real process (whose command line ends in
+	@# "--tray"/"--gui"); without them pkill also matches *this very shell*,
+	@# since its own command line contains the search pattern too, and kills
+	@# the recipe out from under make.
+	@pkill -f "claude_statusbar --tray$$" 2>/dev/null && echo "stopped the running tray" || true
+	@pkill -f "claude_statusbar --gui$$" 2>/dev/null && echo "stopped the running window" || true
 	@# The Xfce panel plugin embeds via XEmbed and therefore needs the system
 	@# PyGObject; everything else comes from PyPI.  Hence a venv on the system
 	@# interpreter with its site-packages visible.
