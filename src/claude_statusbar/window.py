@@ -1177,7 +1177,11 @@ class MainWindow(QWidget):
                                                if label == "wk" else None),
                                session_number=data.wk_session_number)
 
-        self.waste_badge.setText(f"● 5h pace: {data.waste_label}")
+        badge = f"● 5h pace: {data.waste_label}"
+        if data.waste_critical_in is not None:
+            badge += (f" — critical in {dur(data.waste_critical_in)} "
+                     "unless usage picks up")
+        self.waste_badge.setText(badge)
         self.waste_badge.setStyleSheet(f"color: {data.waste_color};")
 
         subtitle = f"{data.model or 'Claude'} · reading {claude_dir()}"

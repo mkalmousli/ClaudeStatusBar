@@ -36,12 +36,6 @@ CHEAP_MODEL = "claude-haiku-4-5-20251001"
 #: stops a flaky reading from spawning a second process for the same window.
 MIN_RESTART_GAP = 4 * 3600 + 30 * 60
 
-#: "Critical" means both: little of the window's clock is left, AND little of
-#: its allowance has been spent — the two facts together mean tokens are
-#: about to be forfeited, not just that a session is old.
-CRITICAL_SECONDS_LEFT = 30 * 60
-CRITICAL_USE_BELOW = 20.0
-
 
 def _state():
     return read_json(STATE_FILE, {}) or {}
@@ -95,17 +89,22 @@ def maybe_autostart(data, notify=None):
 
 
 def maybe_warn_critical(data, notify=None):
-    """Once per window: flag a nearly-over session that is still lightly used."""
+    """Once per window: flag a window that has actually turned critical.
+
+    Uses the same pace comparison as the coloured status dot (data.waste_*),
+    so the notification and what the dot is showing never disagree — this
+    fires exactly when the dot turns red.
+    """
     if not cfg["perfect_use"] or notify is None:
         return
     if data.h5_use is None or not data.h5_reset:
         return
-    remaining = data.h5_reset - data.now
-    if remaining > CRITICAL_SECONDS_LEFT or data.h5_use >= CRITICAL_USE_BELOW:
+    if data.waste_gap is None or data.waste_gap < data.CRITICAL_GAP:
         return
     state = _state()
     if state.get("warned_reset") == data.h5_reset:
         return
+    remaining = max(0, data.h5_reset - data.now)
     notify("Perfect Use — weekly usage about to go to waste",
           f"Only {dur(remaining)} left this 5h session and just "
           f"{round(data.h5_use)}% used — start using tokens now, or that "

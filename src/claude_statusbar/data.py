@@ -204,7 +204,8 @@ class Data:
             self.wk_rem / self.wk_burn_5h
             if self.wk_burn_5h and self.wk_rem is not None else None)
 
-        self.waste_gap, self.waste_label, self.waste_color = self._waste_status()
+        self.waste_gap, self.waste_label, self.waste_color, self.waste_critical_in = (
+            self._waste_status())
 
         self.fresh = self.have_state and self.age < config.seconds("stale")
         self.live = self._session_live()
@@ -307,22 +308,39 @@ class Data:
         (101, "heavily wasting allowance", "#f2555a"),
     )
 
+    #: The gap that turns the dot red — "critical", i.e. use it hard right
+    #: now or this window's share of the week is gone. Matches the last real
+    #: band boundary above, kept as its own constant so the ETA calculation
+    #: below reads independently of how many bands there are.
+    CRITICAL_GAP = WASTE_BANDS[-2][0]
+
     def _waste_status(self):
-        """How much of the current 5h window's pace is being wasted.
+        """How much of the current 5h window's pace is being wasted, and
+        — if it is not critical yet — how long until it will be.
 
         A window not open yet is not "wasted" — there is nothing running to
-        waste — so that state gets its own neutral colour rather than a
-        traffic-light one.
+        waste — so that state gets its own neutral colour and no ETA.
+
+        The ETA assumes usage from here stays exactly where it is now: it is
+        a "if you don't touch it again" worst case, which is the honest
+        thing to warn from — anything you do use only pushes the deadline
+        later, never sooner.
         """
         if self.h5_use is None or not self.h5_reset:
-            return None, "not started yet", cfg["img_label"]
+            return None, "not started yet", cfg["img_label"], None
         remaining = max(0, self.h5_reset - self.now)
         elapsed_pct = max(0.0, min(100.0, (self.H5_WINDOW - remaining) / self.H5_WINDOW * 100))
         gap = elapsed_pct - self.h5_use
+
+        critical_in = None
+        if gap < self.CRITICAL_GAP:
+            pct_per_sec = 100.0 / self.H5_WINDOW
+            critical_in = min(remaining, max(0, (self.CRITICAL_GAP - gap) / pct_per_sec))
+
         for threshold, label, colour in self.WASTE_BANDS:
             if gap < threshold:
-                return gap, label, colour
-        return gap, self.WASTE_BANDS[-1][1], self.WASTE_BANDS[-1][2]
+                return gap, label, colour, critical_in
+        return gap, self.WASTE_BANDS[-1][1], self.WASTE_BANDS[-1][2], critical_in
 
     # -- liveness ---------------------------------------------------------
     def _logs(self):
