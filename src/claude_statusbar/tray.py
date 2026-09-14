@@ -13,7 +13,7 @@ from PySide6.QtGui import QAction, QDesktopServices, QIcon, QPainter, QPixmap
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
-from claude_statusbar import PROJECT_URL, config
+from claude_statusbar import PROJECT_URL, config, perfect_use
 from claude_statusbar.config import cfg
 from claude_statusbar.data import Data
 from claude_statusbar.meter import square_svg, tooltip
@@ -129,6 +129,12 @@ class Tray(QSystemTrayIcon):
         self.summary.setText(text.splitlines()[0])
         if self.window is not None and self.window.isVisible():
             self.window.refresh()
+
+        perfect_use.maybe_autostart(data, notify=self._notify)
+        perfect_use.maybe_warn_critical(data, notify=self._notify)
+
+    def _notify(self, title, text):
+        self.showMessage(title, text, QSystemTrayIcon.Information, 15000)
 
     def open_window(self):
         from claude_statusbar.window import MainWindow

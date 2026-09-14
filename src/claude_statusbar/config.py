@@ -96,6 +96,17 @@ SETTINGS = [
             "Overridden automatically once a real session actually closes. "
             "Leave at 0 to use the automatic estimate only.",
             "Behaviour", 0, 50),
+    Setting("perfect_use", False, "bool", "Perfect Use — never let a session go idle",
+            "The moment a 5h window looks fresh and unopened, this runs one "
+            "throwaway \"Hi Claude\" against the cheapest model in the "
+            "background, purely to start the clock — so the 5h countdown "
+            "begins the instant it can, not whenever you next happen to open "
+            "Claude Code. Critical: when a window is deep into its 5h with "
+            "little of it spent, you get a tray notification telling you to "
+            "start using tokens right away, because whatever is unspent at "
+            "the reset is forfeited, not carried over. Needs the `claude` "
+            "CLI on PATH.",
+            "Behaviour"),
 ]
 
 
