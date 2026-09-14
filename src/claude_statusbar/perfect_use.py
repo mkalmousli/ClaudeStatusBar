@@ -1,16 +1,18 @@
-"""Perfect Use: never let a 5h window tick idle, never let one go unused.
+"""Perfect Use: never let the weekly allowance go to waste.
 
-Two halves of the same goal — spend every token the plan pays for:
+The week is spent in 5h chunks, and each one is a hard "use it or lose it" —
+whatever a window's allowance doesn't get used before its reset is gone, not
+carried over into the rest of the week. Two halves of keeping that from
+happening:
 
   1. The moment a window looks fresh (nobody has sent it a message yet), fire
      one throwaway "Hi Claude" at the cheapest model. That is what actually
-     starts the clock, so the 5h countdown begins right away instead of
-     whenever you next happen to open Claude Code — the gap between "the old
-     window expired" and "I noticed and started a new one" is exactly the
-     allowance this buys back.
-  2. If the window is most of the way through its 5h and usage is still low,
-     say so. That gap is critical: once the reset hits, whatever allowance
-     was not spent is gone, not carried over.
+     starts its clock, so the 5h countdown begins right away instead of
+     whenever you next happen to open Claude Code — every hour it sits
+     unopened is weekly allowance that will never be spent.
+  2. If a window is most of the way through its 5h and usage is still low,
+     say so. That is the same waste arriving from the other end: once the
+     reset hits, whatever was left unspent is forfeited for the week.
 
 Both are no-ops unless the "Perfect Use" setting is on.
 """
@@ -87,8 +89,9 @@ def maybe_autostart(data, notify=None):
     _save(state)
     if notify:
         notify("Perfect Use",
-              "Started a new 5h session automatically — it's ticking, so "
-              "use it before it resets.")
+              "Started a new 5h session automatically so its share of the "
+              "week isn't sitting unspent — it's ticking now, use it before "
+              "it resets.")
 
 
 def maybe_warn_critical(data, notify=None):
@@ -103,9 +106,9 @@ def maybe_warn_critical(data, notify=None):
     state = _state()
     if state.get("warned_reset") == data.h5_reset:
         return
-    notify("Perfect Use — use it or lose it",
+    notify("Perfect Use — weekly usage about to go to waste",
           f"Only {dur(remaining)} left this 5h session and just "
-          f"{round(data.h5_use)}% used — start using tokens now, or the rest "
-          "of this window's allowance is forfeited at the reset.")
+          f"{round(data.h5_use)}% used — start using tokens now, or that "
+          "share of the week's allowance is forfeited at the reset.")
     state["warned_reset"] = data.h5_reset
     _save(state)

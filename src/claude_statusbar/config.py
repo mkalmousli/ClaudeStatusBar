@@ -96,16 +96,18 @@ SETTINGS = [
             "Overridden automatically once a real session actually closes. "
             "Leave at 0 to use the automatic estimate only.",
             "Behaviour", 0, 50),
-    Setting("perfect_use", False, "bool", "Perfect Use — never let a session go idle",
-            "The moment a 5h window looks fresh and unopened, this runs one "
+    Setting("perfect_use", False, "bool",
+            "Perfect Use — never let weekly usage go to waste",
+            "The weekly allowance is spent in 5h chunks, so every hour a "
+            "window sits unopened is allowance that will never be spent —"
+            "the moment one looks fresh and unopened, this runs one "
             "throwaway \"Hi Claude\" against the cheapest model in the "
-            "background, purely to start the clock — so the 5h countdown "
-            "begins the instant it can, not whenever you next happen to open "
-            "Claude Code. Critical: when a window is deep into its 5h with "
-            "little of it spent, you get a tray notification telling you to "
-            "start using tokens right away, because whatever is unspent at "
-            "the reset is forfeited, not carried over. Needs the `claude` "
-            "CLI on PATH.",
+            "background, purely to start its clock right away instead of "
+            "whenever you next happen to open Claude Code. Critical: when a "
+            "window is deep into its 5h with little of it spent, you get a "
+            "tray notification telling you to start using tokens right "
+            "away, because whatever is unspent at the reset is forfeited, "
+            "not carried over to the week. Needs the `claude` CLI on PATH.",
             "Behaviour"),
 ]
 
