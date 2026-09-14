@@ -66,7 +66,18 @@ def install():
     if not WINDOWS and script.exists():
         text = script.read_text()
         if HOOK_MARK in text:
-            print(f"capture: already hooked into {script}")
+            pattern = re.compile(re.escape(HOOK_MARK) + r".*?" + re.escape(HOOK_END) + r"\n?",
+                                 re.S)
+            fresh = _hook_block()
+            current = pattern.search(text)
+            if current and current.group(0) == fresh:
+                print(f"capture: already hooked into {script}")
+                return 0
+            # The path baked into the existing block (e.g. a venv that moved)
+            # no longer matches what we would install now — refresh it in
+            # place rather than silently leaving the stale command behind.
+            script.write_text(pattern.sub(fresh, text))
+            print(f"capture: refreshed the hook in {script}")
             return 0
         if re.search(r"^\s*input=\$\(cat\)", text, re.M):
             backup = script.with_suffix(".sh.csb-bak")
@@ -85,15 +96,23 @@ def install():
     settings = _read_settings()
     existing = settings.get("statusLine") or {}
     command = existing.get("command") or ""
+    fresh_command = f"{executable()} --statusline"
     if "claude-statusbar" in command:
-        print("capture: already set as Claude Code's statusLine command")
+        if command == fresh_command:
+            print("capture: already set as Claude Code's statusLine command")
+            return 0
+        # Same situation as the spliced case: the command points at a path
+        # (e.g. a venv) that no longer matches this install.
+        settings["statusLine"] = {"type": "command", "command": fresh_command,
+                                  "refreshInterval": 3}
+        _write_settings(settings)
+        print(f"capture: refreshed the statusLine command in {claude_settings()}")
         return 0
     if command:
         settings["statusLineBackupByClaudeStatusbar"] = existing
         print(f"capture: replacing the existing statusLine command\n"
               f"         (saved as statusLineBackupByClaudeStatusbar)")
-    settings["statusLine"] = {"type": "command",
-                              "command": f"{executable()} --statusline",
+    settings["statusLine"] = {"type": "command", "command": fresh_command,
                               "refreshInterval": 3}
     _write_settings(settings)
     print(f"capture: set as Claude Code's statusLine command in {claude_settings()}")
