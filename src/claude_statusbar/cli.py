@@ -11,6 +11,8 @@
     claude-statusbar --remove-hook
     claude-statusbar --install-xfce-plugin / --remove-xfce-plugin
     claude-statusbar --install-autostart / --remove-autostart
+    claude-statusbar --install-app-entry / --remove-app-entry
+                                         application menu entry + desktop icon
 
     claude-statusbar --statusline       Claude Code's status line (stores + prints)
     claude-statusbar --capture          store only, echo stdin (for chaining)
@@ -53,6 +55,8 @@ def main(argv=None):
         "--remove-xfce-plugin": installer.remove_xfce_plugin,
         "--install-autostart": installer.install_autostart,
         "--remove-autostart": installer.remove_autostart,
+        "--install-app-entry": installer.install_app_entry,
+        "--remove-app-entry": installer.remove_app_entry,
     }
     if command in actions:
         return actions[command]()

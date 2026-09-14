@@ -12,10 +12,11 @@ import sys
 
 from pathlib import Path
 
-from claude_statusbar.paths import (LOGO, AUTOSTART_DIR, AUTOSTART_FILE, DATA_DIR,
-                                    LINUX, MACOS, WINDOWS, XFCE_PLUGIN_DESKTOP,
-                                    XFCE_PLUGIN_SCRIPT, XFCE_STALE_USER_DESKTOP,
-                                    XFCE_SYSTEM_PLUGIN_DIR)
+from claude_statusbar.paths import (LOGO, APPLICATIONS_DIR, APPLICATIONS_FILE,
+                                    AUTOSTART_DIR, AUTOSTART_FILE, DATA_DIR,
+                                    DESKTOP_FILE, LINUX, MACOS, WINDOWS,
+                                    XFCE_PLUGIN_DESKTOP, XFCE_PLUGIN_SCRIPT,
+                                    XFCE_STALE_USER_DESKTOP, XFCE_SYSTEM_PLUGIN_DIR)
 
 AUTOSTART_DESKTOP = """[Desktop Entry]
 Type=Application
@@ -25,6 +26,17 @@ Exec={exec} --tray
 Icon={icon}
 Terminal=false
 X-GNOME-Autostart-enabled=true
+"""
+
+APPLICATION_DESKTOP = """[Desktop Entry]
+Type=Application
+Name=Claude Status Bar
+Comment=Claude Code usage: 5-hour and weekly limits with time to reset
+Exec={exec} --tray
+Icon={icon}
+Terminal=false
+Categories=Utility;
+StartupNotify=false
 """
 
 
@@ -202,7 +214,8 @@ def install_autostart():
               "claude-statusbar --tray to your login items.")
         return 0
     AUTOSTART_DIR.mkdir(parents=True, exist_ok=True)
-    AUTOSTART_FILE.write_text(AUTOSTART_DESKTOP.format(exec=_tray_command(), icon=LOGO))
+    AUTOSTART_FILE.write_text(
+        AUTOSTART_DESKTOP.format(exec=_tray_command(), icon="claude-statusbar"))
     print(f"tray autostart installed: {AUTOSTART_FILE}")
     return 0
 
@@ -216,11 +229,64 @@ def remove_autostart():
     return 0
 
 
+def install_app_entry():
+    """Register it as a regular application: Applications menu + a Desktop icon.
+
+    This is what turns claude-statusbar from "a script you run from a
+    terminal" into "an app": it shows up in the menu with its icon, and
+    "Add to Desktop" (or a copy placed straight on the Desktop) works too.
+    """
+    _install_icon()
+    if not LINUX:
+        print("Menu/desktop icons are handled by the OS on Windows and macOS.")
+        return 0
+
+    entry = APPLICATION_DESKTOP.format(exec=_tray_command(), icon="claude-statusbar")
+
+    APPLICATIONS_DIR.mkdir(parents=True, exist_ok=True)
+    APPLICATIONS_FILE.write_text(entry)
+    subprocess.run(["update-desktop-database", str(APPLICATIONS_DIR)],
+                   check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    print(f"application menu entry installed: {APPLICATIONS_FILE}")
+
+    if DESKTOP_FILE.parent.is_dir():
+        DESKTOP_FILE.write_text(entry)
+        try:
+            DESKTOP_FILE.chmod(DESKTOP_FILE.stat().st_mode | stat.S_IXUSR
+                               | stat.S_IXGRP | stat.S_IXOTH)
+        except OSError:
+            pass
+        # File managers refuse to run a downloaded/copied .desktop file until
+        # it is marked "trusted"; this metadata attribute is how Nautilus and
+        # Thunar both spell that.
+        subprocess.run(["gio", "set", str(DESKTOP_FILE),
+                        "metadata::trusted", "true"], check=False,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        print(f"desktop icon installed: {DESKTOP_FILE}")
+
+    return 0
+
+
+def remove_app_entry():
+    for path in (APPLICATIONS_FILE, DESKTOP_FILE):
+        try:
+            path.unlink()
+        except OSError:
+            pass
+    subprocess.run(["update-desktop-database", str(APPLICATIONS_DIR)],
+                   check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    print("application menu entry and desktop icon removed")
+    return 0
+
+
 def install_all():
     """Wire up capture, then whichever desktop integration fits this machine."""
     from claude_statusbar import hook
 
     hook.install()
+    print()
+
+    install_app_entry()
     print()
 
     if LINUX and is_xfce():
@@ -246,4 +312,5 @@ def uninstall_all():
     hook.remove()
     remove_xfce_plugin()
     remove_autostart()
+    remove_app_entry()
     return 0

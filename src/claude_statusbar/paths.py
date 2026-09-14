@@ -82,3 +82,7 @@ XFCE_PLUGIN_SCRIPT = DATA_DIR / "xfce-panel-launcher"
 
 AUTOSTART_DIR = Path.home() / ".config/autostart"
 AUTOSTART_FILE = AUTOSTART_DIR / "claude-statusbar.desktop"
+
+APPLICATIONS_DIR = Path.home() / ".local/share/applications"
+APPLICATIONS_FILE = APPLICATIONS_DIR / "claude-statusbar.desktop"
+DESKTOP_FILE = Path.home() / "Desktop" / "claude-statusbar.desktop"

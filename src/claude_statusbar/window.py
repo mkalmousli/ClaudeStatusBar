@@ -265,7 +265,7 @@ class LimitCard(QWidget):
     SESSION_SECONDS = 5 * 3600
 
     def update_values(self, label, used, countdown, time_left=None, reset_at=0,
-                      burn=None, session_left=None, h5_reset=0):
+                      burn=None, h5_reset=0):
         self.name.setText(TITLES.get(label, label))
         colour = status_color(used) if used is not None else cfg["img_label"]
         self.figure.setText(
@@ -277,23 +277,18 @@ class LimitCard(QWidget):
         # where the session running now ends, the thin ones every session after
         # it, all at the current burn rate.
         #
-        # sessions_left counts *full* 5h sessions still possible this week if
-        # usage continues back-to-back with no pause. Two independent limits
-        # apply, and the tighter one wins:
-        #  - the weekly *allowance*: first the current session finishes
-        #    (burning `this_burn`, its share of a session scaled by how much
-        #    of its 5h is still ahead), then whatever allowance remains is
-        #    divided into further full sessions at the current burn rate;
-        #  - the weekly *clock*: no session can start unless a full 5h fits
-        #    before the week itself resets, however much allowance is left.
+        # Simple weekly-percentage division: `burn` is what one fully-used 5h
+        # session costs against the weekly allowance, so how many more fit is
+        # just the remaining allowance divided by that — no assumption about
+        # how much of the *current* session's 5h is still ahead. Two
+        # independent limits apply, and the tighter one wins:
+        #  - the weekly *allowance* runs out after this many sessions;
+        #  - the weekly *clock*: no further session can start unless a full
+        #    5h fits before the week itself resets.
         marks, session_end, sessions_left, clock_limited = [], None, None, False
         if burn and used is not None:
-            head = 100 - used
-            current_time_left_pct = session_left if session_left is not None else 100.0
-            this_burn = burn * (current_time_left_pct / 100)
-            session_end = min(100.0, used + this_burn)
-            by_allowance = max(0.0, (head - this_burn) / burn)
-            sessions_left = by_allowance
+            session_end = min(100.0, used + burn)
+            sessions_left = max(0.0, (100 - used) / burn)
 
             if h5_reset and reset_at:
                 # Sessions run back-to-back after the current one ends, so
@@ -310,7 +305,7 @@ class LimitCard(QWidget):
             # allowance would in principle allow more, but the week resets
             # first — draw no further than that).
             mark = session_end + burn
-            while mark < 100 and len(marks) < int(sessions_left):
+            while mark < 100 and len(marks) < int(sessions_left) - 1:
                 marks.append(mark)
                 mark += burn
         self.meter.set_marks(marks, session_end)
@@ -1167,8 +1162,6 @@ class MainWindow(QWidget):
             card.update_values(label, used, countdown,
                                time_left_pct(data, label), resets.get(label, 0),
                                burn=data.wk_burn_5h if label == "wk" else None,
-                               session_left=(time_left_pct(data, "5h")
-                                             if label == "wk" else None),
                                h5_reset=data.h5_reset if label == "wk" else 0)
 
         subtitle = f"{data.model or 'Claude'} · reading {claude_dir()}"
