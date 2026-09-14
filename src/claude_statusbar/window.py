@@ -54,6 +54,7 @@ class Meter(QWidget):
         self.colour = None            # None = colour by the usage bands
         self.marks = []               # percentages to notch across the bar
         self.highlight = None          # one mark drawn bolder (session-end)
+        self.waste = None              # (start%, end%) — projected-unusable span
         self.setMinimumHeight(thickness + 2)
         self.setMaximumHeight(thickness + 2)
 
@@ -64,6 +65,11 @@ class Meter(QWidget):
     def set_marks(self, marks, highlight=None):
         self.marks = list(marks or [])
         self.highlight = highlight
+        self.update()
+
+    def set_waste(self, start, end):
+        """Mark a span of the track that is headed to expire unused."""
+        self.waste = (start, end) if start is not None and end and end > start else None
         self.update()
 
     def paintEvent(self, _event):
@@ -83,6 +89,18 @@ class Meter(QWidget):
             filled.addRoundedRect(0, top, width, height, radius, radius)
             painter.fillPath(filled,
                              QColor(self.colour or status_color(self.used)))
+
+        # A hatched-looking red span for allowance that is headed to expire
+        # unused — the week's clock runs out before it can be spent, no
+        # matter how the rest is used from here.
+        if self.waste:
+            painter.setClipPath(path)
+            waste_colour = QColor("#f2555a")
+            waste_colour.setAlpha(130)
+            x0 = self.width() * max(0.0, self.waste[0]) / 100
+            x1 = self.width() * min(100.0, self.waste[1]) / 100
+            painter.fillRect(int(round(x0)), int(top),
+                             max(1, int(round(x1 - x0))), int(height), waste_colour)
 
         # Notches showing where each further 5h session would land, with the
         # current session's end drawn bolder.  Clipped to the rounded track so
@@ -260,12 +278,10 @@ class LimitCard(QWidget):
         layout.addWidget(self.caption)
         layout.addWidget(self.projection)
 
-    #: Nominal length of a 5h session, for turning a span of time into a
-    #: count of sessions that fit inside it.
-    SESSION_SECONDS = 5 * 3600
-
     def update_values(self, label, used, countdown, time_left=None, reset_at=0,
-                      burn=None, h5_reset=0, session_bounds=None, session_number=1):
+                      burn=None, session_bounds=None, session_number=1,
+                      sessions_left=None, session_end=None, clock_limited=False,
+                      waste_pct=0.0):
         self.name.setText(TITLES.get(label, label))
         colour = status_color(used) if used is not None else cfg["img_label"]
         self.figure.setText(
@@ -277,31 +293,12 @@ class LimitCard(QWidget):
         # week actually ended, e.g. session 1 at 23%, session 2 at 41% — real
         # data, not a guess. The bold notch is where the session running now
         # is projected to end; thin notches after it project further
-        # sessions at the same (actual, average) burn rate.
-        #
-        # `burn` is what one fully-used 5h session costs on average against
-        # the weekly allowance — plain weekly-percentage division — so how
-        # many more fit is just the remaining allowance divided by that.
-        # Two independent limits apply, and the tighter one wins:
-        #  - the weekly *allowance* runs out after this many sessions;
-        #  - the weekly *clock*: no further session can start unless a full
-        #    5h fits before the week itself resets.
+        # sessions at the same (actual, average) burn rate. `sessions_left`,
+        # `session_end`, `clock_limited` and `waste_pct` are all computed
+        # once in Data._wk_projection so the bar, the settings tab's live
+        # readout, and the notifications can never disagree with each other.
         marks = [b for b in (session_bounds or []) if 0 < b < 100]
-        session_end, sessions_left, clock_limited = None, None, False
-        if burn and used is not None:
-            session_end = min(100.0, used + burn)
-            sessions_left = max(0.0, (100 - used) / burn)
-
-            if h5_reset and reset_at:
-                # Sessions run back-to-back after the current one ends, so
-                # the current session's own tail end (h5_reset) is where the
-                # clock starts counting, not "now".
-                spare_seconds = max(0, reset_at - h5_reset)
-                by_clock = spare_seconds // self.SESSION_SECONDS
-                if by_clock < sessions_left:
-                    sessions_left = float(by_clock)
-                    clock_limited = True
-
+        if burn and used is not None and sessions_left is not None:
             # One notch per full session actually counted in sessions_left, so
             # the bar never shows a boundary the text doesn't back up (e.g.
             # allowance would in principle allow more, but the week resets
@@ -311,6 +308,13 @@ class LimitCard(QWidget):
                 marks.append(mark)
                 mark += burn
         self.meter.set_marks(marks, session_end)
+        # The span between where usage will actually top out and 100%,
+        # highlighted in red, when the week's clock — not the allowance —
+        # is what stops it: that's allowance no amount of using-it-up from
+        # here can still spend in time.
+        self.meter.set_waste(
+            (session_end + sessions_left * burn) if (clock_limited and waste_pct) else None,
+            100.0 if (clock_limited and waste_pct) else None)
 
         self.time_meter.colour = cfg["img_label"]
         self.time_meter.set_used(time_left)
@@ -331,10 +335,12 @@ class LimitCard(QWidget):
 
         if sessions_left is not None:
             limiter = "the week ends first" if clock_limited else "the allowance runs out first"
-            self.projection.setText(
-                f"≈{pct(burn)}/5h session · session {session_number} of the week "
-                f"ends near {round(session_end)}% · {sessions_left:.1f} more full "
-                f"5h sessions possible before the week resets ({limiter})")
+            text = (f"≈{pct(burn)}/5h session · session {session_number} of the week "
+                   f"ends near {round(session_end)}% · {sessions_left:.1f} more full "
+                   f"5h sessions possible before the week resets ({limiter})")
+            if waste_pct:
+                text += f" · ≈{pct(waste_pct)} looks headed to waste"
+            self.projection.setText(text)
         else:
             self.projection.setText("")
         self.projection.setVisible(bool(self.projection.text()))
@@ -941,6 +947,17 @@ class MainWindow(QWidget):
                 grid.addWidget(note, row, 0, 1, 2)
                 row += 1
 
+            if setting.key == "wk_session_percent":
+                # What the two fields above actually resolve to right now,
+                # kept current by refresh() — so "auto" is never a mystery.
+                self.wk_live_label = QLabel()
+                self.wk_live_label.setWordWrap(True)
+                self.wk_live_label.setMinimumWidth(200)
+                self.wk_live_label.setStyleSheet(muted(self.wk_live_label) + " font-style: italic;")
+                self.wk_live_label.setContentsMargins(0, 0, 0, 10)
+                grid.addWidget(self.wk_live_label, row, 0, 1, 2)
+                row += 1
+
         grid.setRowStretch(row, 1)
 
         scroll = QScrollArea()
@@ -1160,6 +1177,33 @@ class MainWindow(QWidget):
             text += f' <a href="{url}">Open the release</a>'
         self.update_note.setText(text)
 
+    def _sync_live_settings(self, data):
+        """Keep the Settings tab's session-number field and its live readout
+        in step with reality, without fighting whatever the user is typing.
+        """
+        widget = self.widgets.get("wk_session_number") if hasattr(self, "widgets") else None
+        if widget is not None and not widget.hasFocus():
+            widget.blockSignals(True)
+            widget.setValue(int(cfg.get("wk_session_number") or 0))
+            widget.blockSignals(False)
+
+        if not hasattr(self, "wk_live_label"):
+            return
+        if not data.wk_burn_5h:
+            self.wk_live_label.setText(
+                "Live: not enough data yet to estimate a per-session %.")
+            return
+        source = ("declared override" if cfg.get("wk_session_percent")
+                  else "real closed sessions" if data.wk_session_bounds
+                  else "declared session number" if cfg.get("wk_session_number")
+                  else "recent usage slope")
+        text = (f"Live: session {data.wk_session_number} this week · "
+               f"~{pct(data.wk_burn_5h)} per 5h session ({source}) · "
+               f"{data.wk_sessions_left:.1f} more full sessions possible")
+        if data.wk_waste_pct:
+            text += f" · ~{pct(data.wk_waste_pct)} of the week looks headed to waste"
+        self.wk_live_label.setText(text)
+
     # -- refresh ----------------------------------------------------------
     def refresh(self):
         wanted = max(1000, int(config.seconds("refresh") * 1000))
@@ -1172,10 +1216,15 @@ class MainWindow(QWidget):
             card.update_values(label, used, countdown,
                                time_left_pct(data, label), resets.get(label, 0),
                                burn=data.wk_burn_5h if label == "wk" else None,
-                               h5_reset=data.h5_reset if label == "wk" else 0,
                                session_bounds=(data.wk_session_bounds
                                                if label == "wk" else None),
-                               session_number=data.wk_session_number)
+                               session_number=data.wk_session_number,
+                               sessions_left=data.wk_sessions_left if label == "wk" else None,
+                               session_end=data.wk_session_end if label == "wk" else None,
+                               clock_limited=data.wk_clock_limited if label == "wk" else False,
+                               waste_pct=data.wk_waste_pct if label == "wk" else 0.0)
+
+        self._sync_live_settings(data)
 
         badge = f"● 5h pace: {data.waste_label}"
         if data.waste_critical_in is not None:

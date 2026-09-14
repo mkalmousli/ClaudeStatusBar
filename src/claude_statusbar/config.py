@@ -93,9 +93,21 @@ SETTINGS = [
             "window last reset (1 = the first) and the projection divides "
             "your current weekly usage by the number completed before this "
             "one, so it works from the first reading instead of waiting. "
-            "Overridden automatically once a real session actually closes. "
-            "Leave at 0 to use the automatic estimate only.",
+            "Updates itself from here on as real sessions close — the "
+            "Overview tab shows the live count. Leave at 0, or just ignore "
+            "it, to use the automatic estimate only.",
             "Behaviour", 0, 50),
+    Setting("wk_session_percent", 0, "int",
+            "Weekly % one 5h session costs (0 = auto)",
+            "Overrides the burn-rate estimate outright: if you already know "
+            "roughly what a fully-used 5h session costs against the weekly "
+            "allowance — from experience, or because usage varies by model "
+            "or task in a way the automatic estimate can't see — put that "
+            "number here and every projection (sessions left, the weekly "
+            "boundary marks, the waste meter) uses it directly instead of "
+            "guessing from history. Leave at 0 to use the automatic figure "
+            "shown live on the Overview tab.",
+            "Behaviour", 0, 100),
     Setting("perfect_use", False, "bool",
             "Perfect Use — never let weekly usage go to waste",
             "The weekly allowance is spent in 5h chunks, so every hour a "

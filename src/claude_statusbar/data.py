@@ -198,11 +198,21 @@ class Data:
         self.wk_session_number = (
             self.wk_sessions_used + 1 if self.wk_session_bounds
             else max(1, int(cfg.get("wk_session_number") or 1)))
+        # Once real closes exist they are the truth — keep the declared
+        # number in step with them, so the Settings field always shows
+        # where the week actually stands instead of going stale the moment
+        # it was typed.
+        if (self.wk_session_bounds
+                and cfg.get("wk_session_number") != self.wk_session_number):
+            cfg["wk_session_number"] = self.wk_session_number
+            try:
+                config.save(cfg)
+            except OSError:
+                pass
 
         self.wk_burn_5h = self._wk_burn_5h()
-        self.wk_sessions_left = (
-            self.wk_rem / self.wk_burn_5h
-            if self.wk_burn_5h and self.wk_rem is not None else None)
+        (self.wk_sessions_left, self.wk_clock_limited,
+         self.wk_session_end, self.wk_waste_pct) = self._wk_projection()
 
         self.waste_gap, self.waste_label, self.waste_color, self.waste_critical_in = (
             self._waste_status())
@@ -256,20 +266,27 @@ class Data:
     def _wk_burn_5h(self):
         """Weekly limit a single 5h session burns.
 
-        Prefers plain fact over projection: if any 5h sessions have actually
-        closed this week, a fully-used session costs on average whatever
-        fraction of the week `wk_session_bounds` shows it cost — simple
-        weekly-percentage division, no extrapolation.  Failing that, a
-        user-declared session number (wk_session_number: "I'm in session 2")
-        gives the same division against the *current* weekly reading, using
-        sessions completed before this one — less exact than a real close,
-        but still not a guess from noise, and available from the first
-        reading of the week.  Only once neither real nor declared session
-        counts exist do we fall back to scaling the current session's own
-        rise up to a nominal 5h.
+        In priority order:
+          1. A declared override (wk_session_percent: "each session costs
+             about 17% of the week") — an explicit, deliberate figure wins
+             over anything guessed from data.
+          2. Plain fact: if any 5h sessions have actually closed this week, a
+             fully-used session costs on average whatever fraction of the
+             week `wk_session_bounds` shows it cost — simple
+             weekly-percentage division, no extrapolation.
+          3. A declared session number (wk_session_number: "I'm in session
+             2") gives the same division against the *current* weekly
+             reading, using sessions completed before this one — less exact
+             than a real close, but available from the first reading of the
+             week.
+          4. Failing all of that, scale the current session's own rise up to
+             a nominal 5h.
         """
         if self.wk_use is None or not self.wk_reset:
             return None
+        declared_pct = cfg.get("wk_session_percent") or 0
+        if declared_pct > 0:
+            return min(100.0, float(declared_pct))
         if self.wk_session_bounds:
             return self.wk_session_bounds[-1] / len(self.wk_session_bounds)
         declared_completed = max(0, (cfg.get("wk_session_number") or 0) - 1)
@@ -291,6 +308,41 @@ class Data:
         if elapsed < self.BURN_MIN_ELAPSED or rise <= 0:
             return None
         return min(100.0, rise * self.BURN_WINDOW / elapsed)
+
+    def _wk_projection(self):
+        """How the rest of the week plays out at the current burn rate.
+
+        Two independent limits on how many more full 5h sessions fit, and
+        the tighter one wins:
+          - the weekly *allowance* runs out after `(100 - wk_use) / burn`
+            sessions;
+          - the weekly *clock*: no further session can start unless a full
+            5h fits before the week itself resets.
+        When the clock is what binds, some of the allowance can never be
+        spent in time no matter how it's used from here — that shortfall is
+        `waste_pct`, the number the weekly waste meter draws.
+        """
+        burn = self.wk_burn_5h
+        if not burn or self.wk_use is None:
+            return None, False, None, 0.0
+
+        session_end = min(100.0, self.wk_use + burn)
+        sessions_left = max(0.0, (100 - self.wk_use) / burn)
+        clock_limited = False
+
+        if self.h5_reset and self.wk_reset:
+            spare_seconds = max(0, self.wk_reset - self.h5_reset)
+            by_clock = spare_seconds // self.H5_WINDOW
+            if by_clock < sessions_left:
+                sessions_left = float(by_clock)
+                clock_limited = True
+
+        waste_pct = 0.0
+        if clock_limited:
+            usable = min(100.0, session_end + sessions_left * burn)
+            waste_pct = max(0.0, 100.0 - usable)
+
+        return sessions_left, clock_limited, session_end, waste_pct
 
     #: 5h window length, for turning "time until h5_reset" into "% of the
     #: window elapsed" — the pace line the waste indicator compares against.
