@@ -187,6 +187,13 @@ class Data:
         self.h5_cd = countdown(self.h5_reset)
         self.wk_cd = countdown(self.wk_reset)
 
+        # Fixed points: the weekly-% reading at each 5h session that has
+        # actually closed this week, e.g. [23, 41] — session 1 ended at 23%
+        # of the weekly allowance, session 2 at 41%. This is what lets the
+        # Overview draw real boundary lines instead of a projected guess.
+        self.wk_session_bounds = history.session_boundaries(self.wk_reset)
+        self.wk_sessions_used = len(self.wk_session_bounds)
+
         self.wk_burn_5h = self._wk_burn_5h()
         self.wk_sessions_left = (
             self.wk_rem / self.wk_burn_5h
@@ -239,14 +246,19 @@ class Data:
     BURN_MIN_ELAPSED = 15 * 60
 
     def _wk_burn_5h(self):
-        """Weekly limit a single 5h session burns, from the recent snapshots.
+        """Weekly limit a single 5h session burns.
 
-        Walks the weekly-meter readings in the current weekly window over the
-        last five hours and scales the rise up to a full 5h session, so the
-        overview can mark how many more sessions fit in what is left.
+        Prefers plain fact over projection: if any 5h sessions have actually
+        closed this week, a fully-used session costs on average whatever
+        fraction of the week `wk_session_bounds` shows it cost — simple
+        weekly-percentage division, no extrapolation.  Only once the week is
+        too young to have closed a single session yet do we fall back to
+        scaling the current session's own rise up to a nominal 5h.
         """
         if self.wk_use is None or not self.wk_reset:
             return None
+        if self.wk_session_bounds:
+            return self.wk_session_bounds[-1] / len(self.wk_session_bounds)
         points = sorted(
             (int(r["ts"]), clamp_pct(r.get("wk_used")))
             for r in self.records

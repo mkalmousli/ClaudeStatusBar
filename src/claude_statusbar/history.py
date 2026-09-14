@@ -57,11 +57,18 @@ def record(snapshot, now):
                 current = open_windows.get(kind)
                 if current and int(current["reset"]) != reset:
                     if int(current["reset"]) <= now:
-                        closed.append({
+                        entry = {
                             "kind": kind,
                             "reset": int(current["reset"]),
                             "peak": float(current["peak"]),
-                        })
+                        }
+                        # For a closed 5h window, also note where the weekly
+                        # meter stood at that moment: this is what lets the
+                        # Overview draw a fixed line at each real session
+                        # boundary instead of an evenly-spaced guess.
+                        if kind == "h5" and snapshot.get("wk_used") is not None:
+                            entry["wk_at_close"] = float(snapshot["wk_used"])
+                        closed.append(entry)
                     current = None
                 if current is None:
                     current = {"reset": reset, "peak": float(used)}
@@ -80,6 +87,27 @@ def record(snapshot, now):
                 replace_atomic(tmp, path)
     except OSError:
         pass
+
+
+#: A weekly window is exactly this long, so its start is `wk_reset` minus one.
+WEEK_SECONDS = 7 * 86400
+
+
+def session_boundaries(wk_reset):
+    """Cumulative weekly-% reading at each 5h session that has closed this week.
+
+    Sorted oldest first, e.g. [23.0, 41.0] means the first session of the
+    week ended at 23% of the weekly allowance and the second at 41% — fixed
+    points from what actually happened, not a projection.
+    """
+    if not wk_reset:
+        return []
+    week_start = wk_reset - WEEK_SECONDS
+    rows = [
+        r for r in closed_windows("h5")
+        if r.get("wk_at_close") is not None and week_start <= r.get("reset", 0) <= wk_reset
+    ]
+    return [float(r["wk_at_close"]) for r in rows]
 
 
 def closed_windows(kind=None):

@@ -265,7 +265,7 @@ class LimitCard(QWidget):
     SESSION_SECONDS = 5 * 3600
 
     def update_values(self, label, used, countdown, time_left=None, reset_at=0,
-                      burn=None, h5_reset=0):
+                      burn=None, h5_reset=0, session_bounds=None):
         self.name.setText(TITLES.get(label, label))
         colour = status_color(used) if used is not None else cfg["img_label"]
         self.figure.setText(
@@ -273,19 +273,22 @@ class LimitCard(QWidget):
             f'<span style="font-size:small; {muted(self.figure)}"> used</span>')
         self.meter.set_used(used)
 
-        # Notch the weekly bar at each 5h-session boundary: the bold notch is
-        # where the session running now ends, the thin ones every session after
-        # it, all at the current burn rate.
+        # Fixed lines first: where each 5h session that already closed this
+        # week actually ended, e.g. session 1 at 23%, session 2 at 41% — real
+        # data, not a guess. The bold notch is where the session running now
+        # is projected to end; thin notches after it project further
+        # sessions at the same (actual, average) burn rate.
         #
-        # Simple weekly-percentage division: `burn` is what one fully-used 5h
-        # session costs against the weekly allowance, so how many more fit is
-        # just the remaining allowance divided by that — no assumption about
-        # how much of the *current* session's 5h is still ahead. Two
-        # independent limits apply, and the tighter one wins:
+        # `burn` is what one fully-used 5h session costs on average against
+        # the weekly allowance — plain weekly-percentage division — so how
+        # many more fit is just the remaining allowance divided by that.
+        # Two independent limits apply, and the tighter one wins:
         #  - the weekly *allowance* runs out after this many sessions;
         #  - the weekly *clock*: no further session can start unless a full
         #    5h fits before the week itself resets.
-        marks, session_end, sessions_left, clock_limited = [], None, None, False
+        marks = [b for b in (session_bounds or []) if 0 < b < 100]
+        session_number = len(session_bounds or []) + 1
+        session_end, sessions_left, clock_limited = None, None, False
         if burn and used is not None:
             session_end = min(100.0, used + burn)
             sessions_left = max(0.0, (100 - used) / burn)
@@ -305,7 +308,7 @@ class LimitCard(QWidget):
             # allowance would in principle allow more, but the week resets
             # first — draw no further than that).
             mark = session_end + burn
-            while mark < 100 and len(marks) < int(sessions_left) - 1:
+            while mark < 100 and len(marks) < len(session_bounds or []) + int(sessions_left) - 1:
                 marks.append(mark)
                 mark += burn
         self.meter.set_marks(marks, session_end)
@@ -330,9 +333,9 @@ class LimitCard(QWidget):
         if sessions_left is not None:
             limiter = "the week ends first" if clock_limited else "the allowance runs out first"
             self.projection.setText(
-                f"≈{pct(burn)}/5h session · this session ends near "
-                f"{round(session_end)}% · {sessions_left:.1f} more full 5h "
-                f"sessions possible before the week resets ({limiter})")
+                f"≈{pct(burn)}/5h session · session {session_number} of the week "
+                f"ends near {round(session_end)}% · {sessions_left:.1f} more full "
+                f"5h sessions possible before the week resets ({limiter})")
         else:
             self.projection.setText("")
         self.projection.setVisible(bool(self.projection.text()))
@@ -1162,7 +1165,9 @@ class MainWindow(QWidget):
             card.update_values(label, used, countdown,
                                time_left_pct(data, label), resets.get(label, 0),
                                burn=data.wk_burn_5h if label == "wk" else None,
-                               h5_reset=data.h5_reset if label == "wk" else 0)
+                               h5_reset=data.h5_reset if label == "wk" else 0,
+                               session_bounds=(data.wk_session_bounds
+                                               if label == "wk" else None))
 
         subtitle = f"{data.model or 'Claude'} · reading {claude_dir()}"
         if data.note:
