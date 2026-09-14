@@ -168,10 +168,15 @@ class Data:
         if self.credit_use is None and self.credits is not None and self.credit_limit:
             self.credit_use = float(self.credits) / float(self.credit_limit) * 100
 
+        # A 5h window resets often enough that an idle hour or two leaves no
+        # snapshot for the *current* one — every record on hand describes a
+        # window that has already rolled over. That is not "no reading", it
+        # is a fresh window nobody has used yet, so treat it as 0% rather
+        # than showing a blank dash.
         h5 = self.current(self.recent, "h5_used", "h5_reset")
         wk = self.current(self.recent, "wk_used", "wk_reset")
-        self.h5_use = clamp_pct(h5.get("h5_used")) if h5 else None
-        self.wk_use = clamp_pct(wk.get("wk_used")) if wk else None
+        self.h5_use = clamp_pct(h5.get("h5_used")) if h5 else (0.0 if self.recent else None)
+        self.wk_use = clamp_pct(wk.get("wk_used")) if wk else (0.0 if self.recent else None)
         self.h5_rem = None if self.h5_use is None else 100 - self.h5_use
         self.wk_rem = None if self.wk_use is None else 100 - self.wk_use
 
