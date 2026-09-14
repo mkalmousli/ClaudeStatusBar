@@ -193,6 +193,11 @@ class Data:
         # Overview draw real boundary lines instead of a projected guess.
         self.wk_session_bounds = history.session_boundaries(self.wk_reset)
         self.wk_sessions_used = len(self.wk_session_bounds)
+        # Which session of the week this is: a real close beats the
+        # user-declared number, which beats assuming this is the first.
+        self.wk_session_number = (
+            self.wk_sessions_used + 1 if self.wk_session_bounds
+            else max(1, int(cfg.get("wk_session_number") or 1)))
 
         self.wk_burn_5h = self._wk_burn_5h()
         self.wk_sessions_left = (
@@ -251,14 +256,22 @@ class Data:
         Prefers plain fact over projection: if any 5h sessions have actually
         closed this week, a fully-used session costs on average whatever
         fraction of the week `wk_session_bounds` shows it cost — simple
-        weekly-percentage division, no extrapolation.  Only once the week is
-        too young to have closed a single session yet do we fall back to
-        scaling the current session's own rise up to a nominal 5h.
+        weekly-percentage division, no extrapolation.  Failing that, a
+        user-declared session number (wk_session_number: "I'm in session 2")
+        gives the same division against the *current* weekly reading, using
+        sessions completed before this one — less exact than a real close,
+        but still not a guess from noise, and available from the first
+        reading of the week.  Only once neither real nor declared session
+        counts exist do we fall back to scaling the current session's own
+        rise up to a nominal 5h.
         """
         if self.wk_use is None or not self.wk_reset:
             return None
         if self.wk_session_bounds:
             return self.wk_session_bounds[-1] / len(self.wk_session_bounds)
+        declared_completed = max(0, (cfg.get("wk_session_number") or 0) - 1)
+        if declared_completed > 0 and self.wk_use > 0:
+            return min(100.0, self.wk_use / declared_completed)
         points = sorted(
             (int(r["ts"]), clamp_pct(r.get("wk_used")))
             for r in self.records

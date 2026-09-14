@@ -83,6 +83,19 @@ SETTINGS = [
     Setting("claude_dir", "", "path", "Claude data directory",
             "Empty means ~/.claude. Takes effect when the app restarts.",
             "Behaviour"),
+    Setting("wk_session_number", 0, "int",
+            "Current 5h session number this week",
+            "The weekly-burn projection prefers real closed 5h windows, and "
+            "falls back to a slope estimate that needs two snapshots 15+ "
+            "minutes apart. Early in the week — or early in a session — "
+            "neither may exist yet, so the projection stays blank. Set this "
+            "to which 5h session you're in right now since the weekly "
+            "window last reset (1 = the first) and the projection divides "
+            "your current weekly usage by the number completed before this "
+            "one, so it works from the first reading instead of waiting. "
+            "Overridden automatically once a real session actually closes. "
+            "Leave at 0 to use the automatic estimate only.",
+            "Behaviour", 0, 50),
 ]
 
 

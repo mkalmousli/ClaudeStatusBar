@@ -265,7 +265,7 @@ class LimitCard(QWidget):
     SESSION_SECONDS = 5 * 3600
 
     def update_values(self, label, used, countdown, time_left=None, reset_at=0,
-                      burn=None, h5_reset=0, session_bounds=None):
+                      burn=None, h5_reset=0, session_bounds=None, session_number=1):
         self.name.setText(TITLES.get(label, label))
         colour = status_color(used) if used is not None else cfg["img_label"]
         self.figure.setText(
@@ -287,7 +287,6 @@ class LimitCard(QWidget):
         #  - the weekly *clock*: no further session can start unless a full
         #    5h fits before the week itself resets.
         marks = [b for b in (session_bounds or []) if 0 < b < 100]
-        session_number = len(session_bounds or []) + 1
         session_end, sessions_left, clock_limited = None, None, False
         if burn and used is not None:
             session_end = min(100.0, used + burn)
@@ -1167,7 +1166,8 @@ class MainWindow(QWidget):
                                burn=data.wk_burn_5h if label == "wk" else None,
                                h5_reset=data.h5_reset if label == "wk" else 0,
                                session_bounds=(data.wk_session_bounds
-                                               if label == "wk" else None))
+                                               if label == "wk" else None),
+                               session_number=data.wk_session_number)
 
         subtitle = f"{data.model or 'Claude'} · reading {claude_dir()}"
         if data.note:
