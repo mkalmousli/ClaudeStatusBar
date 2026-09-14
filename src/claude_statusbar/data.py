@@ -204,6 +204,8 @@ class Data:
             self.wk_rem / self.wk_burn_5h
             if self.wk_burn_5h and self.wk_rem is not None else None)
 
+        self.waste_gap, self.waste_label, self.waste_color = self._waste_status()
+
         self.fresh = self.have_state and self.age < config.seconds("stale")
         self.live = self._session_live()
         self.note, self.note_warn = self._age_note()
@@ -288,6 +290,39 @@ class Data:
         if elapsed < self.BURN_MIN_ELAPSED or rise <= 0:
             return None
         return min(100.0, rise * self.BURN_WINDOW / elapsed)
+
+    #: 5h window length, for turning "time until h5_reset" into "% of the
+    #: window elapsed" — the pace line the waste indicator compares against.
+    H5_WINDOW = 5 * 3600
+
+    #: (gap-in-points, label, colour) thresholds, tightest first. `gap` is
+    #: how far the window's elapsed-time% is ahead of its used%: 0 means
+    #: usage is keeping pace with the clock, and a big gap means most of the
+    #: window's time is gone with little of its allowance spent — the
+    #: definition of "about to be wasted".
+    WASTE_BANDS = (
+        (15, "on pace", "#2ec27e"),
+        (35, "falling behind", "#fab219"),
+        (60, "wasting allowance", "#ec835a"),
+        (101, "heavily wasting allowance", "#f2555a"),
+    )
+
+    def _waste_status(self):
+        """How much of the current 5h window's pace is being wasted.
+
+        A window not open yet is not "wasted" — there is nothing running to
+        waste — so that state gets its own neutral colour rather than a
+        traffic-light one.
+        """
+        if self.h5_use is None or not self.h5_reset:
+            return None, "not started yet", cfg["img_label"]
+        remaining = max(0, self.h5_reset - self.now)
+        elapsed_pct = max(0.0, min(100.0, (self.H5_WINDOW - remaining) / self.H5_WINDOW * 100))
+        gap = elapsed_pct - self.h5_use
+        for threshold, label, colour in self.WASTE_BANDS:
+            if gap < threshold:
+                return gap, label, colour
+        return gap, self.WASTE_BANDS[-1][1], self.WASTE_BANDS[-1][2]
 
     # -- liveness ---------------------------------------------------------
     def _logs(self):

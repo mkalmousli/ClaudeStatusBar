@@ -62,16 +62,26 @@ def _row(y, label, used, countdown, label_color, width):
     return "".join(parts)
 
 
+def _waste_dot(cx, cy, radius, data):
+    """A small colour-coded dot: is the current 5h window's pace being wasted?
+
+    Green/amber/orange/red mirrors the usage bands, so the one dot reads at a
+    glance without needing the tooltip open.
+    """
+    colour = getattr(data, "waste_color", None) or cfg["img_label"]
+    return f'<circle cx="{cx}" cy="{cy}" r="{radius}" fill="{colour}"/>'
+
+
 def wide_svg(data, height=None):
     """The panel strip: two labelled rows with percentages and countdowns."""
     height = height or cfg["img_height"]
     scale = height / VB_H
     # Amber labels flag "these numbers are suspect" — stale, or hook not firing.
     label_color = cfg["warn_color"] if data.note_warn else cfg["img_label"]
-    body = _mark(MARK_COLOR) + "".join(
-        _row(y, label, used, countdown, label_color, VB_W)
-        for y, (label, used, countdown) in zip((7, 17), limit_rows(data))
-    )
+    body = (_mark(MARK_COLOR)
+           + _waste_dot(VB_W - PAD - 2.5, PAD + 1.5, 2.5, data)
+           + "".join(_row(y, label, used, countdown, label_color, VB_W)
+                     for y, (label, used, countdown) in zip((7, 17), limit_rows(data))))
     return (f'<svg xmlns="http://www.w3.org/2000/svg" width="{round(VB_W * scale)}" '
             f'height="{round(VB_H * scale)}" viewBox="0 0 {VB_W} {VB_H}">{body}</svg>')
 
@@ -92,6 +102,7 @@ def square_svg(data, size=64):
             filled = max(2, round(20 * used / 100))
             body.append(f'<rect x="2" y="{y}" width="{filled}" height="6" rx="3" '
                         f'fill="{status_color(used)}"/>')
+    body.append(_waste_dot(SQUARE_VB - 4, 4, 3, data))
     return (f'<svg xmlns="http://www.w3.org/2000/svg" width="{size}" height="{size}" '
             f'viewBox="0 0 {SQUARE_VB} {SQUARE_VB}">{"".join(body)}</svg>')
 
@@ -104,6 +115,8 @@ def tooltip(data):
         lines[0] += f" · ${float(data.cost):.2f}"
         if data.note:
             lines[0] += f" · {data.note}"
+        if getattr(data, "waste_label", None):
+            lines.append(f"5h pace: {data.waste_label}")
         for label, used, countdown in limit_rows(data):
             filled = 0 if used is None else round(used * 16 / 100)
             meter = "█" * filled + "░" * (16 - filled)

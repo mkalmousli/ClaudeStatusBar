@@ -574,6 +574,14 @@ class MainWindow(QWidget):
         self.subtitle.setWordWrap(True)
         layout.addWidget(self.subtitle)
 
+        # A one-glance, colour-coded read on whether the current 5h window's
+        # pace is on track to use its allowance or headed to waste it.
+        self.waste_badge = QLabel()
+        badge_font = QFont(self.waste_badge.font())
+        badge_font.setBold(True)
+        self.waste_badge.setFont(badge_font)
+        layout.addWidget(self.waste_badge)
+
         self.cards = [LimitCard(), LimitCard()]
         for card in self.cards:
             layout.addWidget(card)
@@ -1168,6 +1176,9 @@ class MainWindow(QWidget):
                                session_bounds=(data.wk_session_bounds
                                                if label == "wk" else None),
                                session_number=data.wk_session_number)
+
+        self.waste_badge.setText(f"● 5h pace: {data.waste_label}")
+        self.waste_badge.setStyleSheet(f"color: {data.waste_color};")
 
         subtitle = f"{data.model or 'Claude'} · reading {claude_dir()}"
         if data.note:
