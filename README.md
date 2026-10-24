@@ -1,4 +1,13 @@
-# claudebar
+<p align="center"><img src="logo.svg" width="112" alt="claudebar logo"></p>
+<h1 align="center">claudebar</h1>
+<p align="center"><b>Claude Code usage for every profile, in your tray, a window or the terminal.</b></p>
+<p align="center">
+<a href="https://github.com/mkalmousli/ClaudeStatusBar/releases/latest"><img alt="release" src="https://img.shields.io/github/v/release/mkalmousli/ClaudeStatusBar?color=d97757"></a>
+<a href="https://github.com/mkalmousli/ClaudeStatusBar/actions/workflows/ci.yml"><img alt="ci" src="https://img.shields.io/github/actions/workflow/status/mkalmousli/ClaudeStatusBar/ci.yml?label=ci"></a>
+<img alt="license" src="https://img.shields.io/badge/license-GPL--3.0-blue">
+<img alt="C" src="https://img.shields.io/badge/written%20in-C-555">
+</p>
+<p align="center"><img src="docs/gui.png" width="420" alt="claudebar GUI with demo data"></p>
 
 A usage meter for Claude Code, written in C. Shows your 5-hour and weekly limits,
 resets, pace and projections for **every Claude config on the machine**: the
@@ -32,11 +41,9 @@ binary). `claudebar update` does it now; `claudebar set autoupdate off` stops it
 
 ## GUI
 
-![claudebar GUI](docs/gui.png)
+The terminal view (`claudebar`), with demo data:
 
 ![claudebar terminal view](docs/tui.png)
-
-(Demo data.)
 
 `claudebar gui` (or the "claudebar" menu entry; it autostarts hidden in the tray) shows one
 card per **profile**: its name, signed-in account, the 5h and weekly meters (the line marks

@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 640">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#242836"/><stop offset="1" stop-color="#101217"/></linearGradient>
+    <linearGradient id="g" x1="0" x2="1"><stop offset="0" stop-color="#e8a13a"/><stop offset="1" stop-color="#d97757"/></linearGradient>
+  </defs>
+  <rect width="1280" height="640" fill="url(#bg)"/>
+  <circle cx="1130" cy="90" r="320" fill="#d97757" opacity=".07"/>
+  <defs>
+    <linearGradient id="lbg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2b2f3a"/><stop offset="1" stop-color="#14161c"/></linearGradient>
+    <linearGradient id="larc" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#e8a13a"/><stop offset="1" stop-color="#d97757"/></linearGradient>
+  </defs><g transform="translate(110 130) scale(.46)">
+  <rect width="512" height="512" rx="112" fill="url(#lbg)"/>
+  <circle cx="256" cy="256" r="150" fill="none" stroke="#3a3f4d" stroke-width="52"/>
+  <circle cx="256" cy="256" r="150" fill="none" stroke="url(#larc)" stroke-width="52" stroke-linecap="round"
+          stroke-dasharray="640 303" transform="rotate(-90 256 256)"/>
+  <line x1="292.5" y1="368.2" x2="312.2" y2="429.1" stroke="#fff" stroke-width="12" stroke-linecap="round"/>
+  <circle cx="256" cy="256" r="26" fill="#d97757"/>
+</g>
+  <g font-family="DejaVu Sans, sans-serif" fill="#f2f2f5">
+    <text x="370" y="240" font-size="96" font-weight="bold">claudebar</text>
+    <text x="374" y="304" font-size="34" fill="#a9afbf">Claude Code usage, for every profile.</text>
+  </g>
+  <g font-family="DejaVu Sans Mono, monospace" font-size="26" fill="#a9afbf">
+    <text x="110" y="470">5h   </text><text x="110" y="520">week </text>
+  </g>
+  <rect x="210" y="448" width="700" height="28" rx="14" fill="#3a3f4d"/><rect x="210" y="448" width="406" height="28" rx="14" fill="url(#g)"/>
+  <rect x="210" y="498" width="700" height="28" rx="14" fill="#3a3f4d"/><rect x="210" y="498" width="238" height="28" rx="14" fill="#2fb344"/>
+  <g font-family="DejaVu Sans, sans-serif" font-size="26" font-weight="bold"><text x="932" y="471" fill="#e8a13a">58%</text><text x="932" y="521" fill="#2fb344">34%</text></g>
+  <text x="110" y="590" font-family="DejaVu Sans, sans-serif" font-size="24" fill="#7c8296">Tray · GUI · terminal  ·  written in C  ·  Linux, macOS, BSD</text>
+</svg>
