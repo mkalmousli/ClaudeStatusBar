@@ -32,6 +32,12 @@ binary). `claudebar update` does it now; `claudebar set autoupdate off` stops it
 
 ## GUI
 
+![claudebar GUI](docs/gui.png)
+
+![claudebar terminal view](docs/tui.png)
+
+(Demo data.)
+
 `claudebar gui` (or the "claudebar" menu entry; it autostarts hidden in the tray) shows one
 card per **profile**: its name, signed-in account, the 5h and weekly meters (the line marks
 how much of the window has passed), and whether you are on pace. Everything is in the window:

@@ -70,7 +70,7 @@ void card_build(Card *c, int k, GtkWidget *parent) {
     gtk_widget_show_all(menu);
     gtk_container_add(GTK_CONTAINER(mb), gtk_image_new_from_icon_name("view-more-symbolic", GTK_ICON_SIZE_BUTTON));
     gtk_menu_button_set_popup(GTK_MENU_BUTTON(mb), menu);
-    gtk_widget_set_valign(mb, GTK_ALIGN_START);
+    gtk_widget_set_valign(mb, GTK_ALIGN_START), gtk_widget_set_halign(mb, GTK_ALIGN_END);
     gtk_button_set_relief(GTK_BUTTON(mb), GTK_RELIEF_NONE);
     gtk_grid_attach(GTK_GRID(g), mb, 2, 0, 1, 2);
     gtk_container_add(GTK_CONTAINER(f), g);
