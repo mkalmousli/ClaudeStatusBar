@@ -1,0 +1,78 @@
+# Push a tag like v1.2.0 to publish prebuilt binaries for every platform below.
+name: release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  linux-bsd:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: linux-x86_64,  target: x86_64-linux-musl }
+          - { name: linux-aarch64, target: aarch64-linux-musl }
+          - { name: linux-armv7,   target: arm-linux-musleabihf }
+          - { name: linux-i686,    target: x86-linux-musl }
+          - { name: linux-riscv64, target: riscv64-linux-musl }
+          - { name: linux-ppc64le, target: powerpc64le-linux-musl }
+          - { name: linux-s390x,   target: s390x-linux-musl }
+          - { name: freebsd-x86_64,  target: x86_64-freebsd }
+          - { name: freebsd-aarch64, target: aarch64-freebsd }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with: { version: 0.14.1 }
+      - name: build (zig cc cross-compiles; linux targets are static musl)
+        run: |
+          sed -i "s/#define VERSION \".*\"/#define VERSION \"${GITHUB_REF_NAME#v}\"/" src/cb.h
+          cc build.c -o build
+          CC="zig cc -target ${{ matrix.target }}" OUT=out/${{ matrix.name }} ./build
+          mkdir dist && cp out/${{ matrix.name }}/claudebar dist/claudebar-${{ matrix.name }}
+          cd dist && sha256sum claudebar-${{ matrix.name }} > claudebar-${{ matrix.name }}.sha256
+      - uses: actions/upload-artifact@v4
+        with: { name: "bin-${{ matrix.name }}", path: dist/* }
+  macos:
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        include:
+          - { name: macos-aarch64, arch: arm64 }
+          - { name: macos-x86_64,  arch: x86_64 }
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          sed -i '' "s/#define VERSION \".*\"/#define VERSION \"${GITHUB_REF_NAME#v}\"/" src/cb.h
+          cc build.c -o build
+          CC="cc -arch ${{ matrix.arch }}" OUT=out/${{ matrix.name }} ./build
+          mkdir dist && cp out/${{ matrix.name }}/claudebar dist/claudebar-${{ matrix.name }}
+          cd dist && shasum -a 256 claudebar-${{ matrix.name }} > claudebar-${{ matrix.name }}.sha256
+      - uses: actions/upload-artifact@v4
+        with: { name: "bin-${{ matrix.name }}", path: dist/* }
+  gui:
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - { name: linux-x86_64,  runner: ubuntu-22.04 }
+          - { name: linux-aarch64, runner: ubuntu-22.04-arm }
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          sudo apt-get update && sudo apt-get install -y libgtk-3-dev
+          sed -i "s/#define VERSION \".*\"/#define VERSION \"${GITHUB_REF_NAME#v}\"/" src/cb.h
+          cc build.c -o build && ./build
+          mkdir dist && cp out/claudebar-gui dist/claudebar-gui-${{ matrix.name }}
+          cd dist && sha256sum claudebar-gui-${{ matrix.name }} > claudebar-gui-${{ matrix.name }}.sha256
+      - uses: actions/upload-artifact@v4
+        with: { name: "gui-${{ matrix.name }}", path: dist/* }
+  publish:
+    needs: [linux-bsd, macos, gui]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { path: dist, pattern: "*-*", merge-multiple: true }
+      - env: { GH_TOKEN: "${{ github.token }}" }
+        run: gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --generate-notes

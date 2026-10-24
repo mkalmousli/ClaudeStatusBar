@@ -9,3 +9,5 @@ src/claude_statusbar/assets/
 .mypy_cache/
 .ruff_cache/
 *.so
+out/
+build

@@ -1,0 +1,19 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  test:
+    strategy:
+      matrix: { os: [ubuntu-latest, macos-latest] }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev
+      - run: cc build.c -o build && ./build test
+      - name: no source file over 100 lines
+        run: '! wc -l src/*.c src/*.h gui/* tests/*.c build.c build.h | grep -v total | awk "\$1>100" | grep .'
+  installer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sh -n install.sh
